@@ -1,0 +1,135 @@
+import org.jlab.evio.clas12.*;
+import java.io.*;
+import org.jlab.clas.physics.*;
+import org.jlab.clas12.physics.*;
+import org.root.histogram.*;
+import org.root.pad.*;
+import org.root.data.*;
+import org.root.func.*;	
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.jlab.detector.decode.*;
+import org.jlab.coda.jevio.ByteDataTransformer;
+import org.jlab.coda.jevio.CompositeData;
+import org.jlab.coda.jevio.DataType;
+import org.jlab.coda.jevio.EvioException;
+import org.jlab.coda.jevio.EvioNode;
+import org.jlab.detector.decode.DetectorDataDgtz.ADCData;
+import org.jlab.detector.decode.DetectorDataDgtz.TDCData;
+import org.jlab.io.evio.EvioDataEvent;
+import org.jlab.io.evio.EvioSource;
+import org.jlab.io.evio.EvioTreeBranch;
+import org.jlab.utils.data.DataUtils;
+import org.jlab.detector.base.DetectorDescriptor;
+import org.jlab.detector.base.DetectorType;
+import org.root.histogram.*;
+import org.root.pad.*;
+import org.root.data.*;
+import org.root.func.*;	
+import org.jlab.groot.data.H1F;
+import org.jlab.groot.data.H2F;
+import org.jlab.groot.data.TDirectory;
+import org.jlab.groot.graphics.EmbeddedCanvasTabbed;
+import java.io.IOException;
+import java.io.PrintWriter;
+import org.clas.viewer.AnalysisMonitor;
+import org.jlab.clas.physics.Particle;
+import org.jlab.groot.data.H1F;
+import org.jlab.groot.data.H2F;
+import org.jlab.groot.group.DataGroup;
+import org.jlab.io.base.DataBank;
+import org.jlab.io.base.DataEvent;
+import org.jlab.groot.ui.TCanvas;
+
+import org.jlab.groot.fitter.DataFitter;
+import org.jlab.groot.group.DataGroup;
+import org.jlab.groot.math.F1D;
+H1F spectrum = new H1F("spectrum", 100, 200,300);
+H1F ADCspectrum = new H1F("ADCspectrum",  200, 0, 200);
+float pedestalFit = 0;
+float signal = 0;
+float signalCounter = 0;
+float darkSignalCounter = 0;
+float darkSignal = 0;
+   F1D pedF = new F1D("pedF","[amp]*gaus(x,[mean],[sigma])", 235, 270);
+       pedF.setParameter(0, 0);
+       pedF.setParameter(1, 252);
+       pedF.setParameter(2, 2.65);
+       pedF.setLineColor(2);
+       pedF.setLineWidth(2);
+     
+  List<H1F> sEventH = new ArrayList<H1F>();
+  for (int t = 0; t < 100; t++){
+          sEventH.add(new H1F("sEventH" + t, 200, 0, 200));
+}
+	int eCounter = 0;
+        EvioSource reader = new EvioSource();
+        reader.open("pmttest_005333.evio.0");
+        CodaEventDecoder decoder = new CodaEventDecoder();
+        //DetectorEventDecoder detectorDecoder = new DetectorEventDecoder();
+        
+        while(reader.hasEvent()==true){
+	eCounter++;
+	EvioDataEvent event = (EvioDataEvent) reader.getNextEvent();
+        List<DetectorDataDgtz>  rawEntries = decoder.getDataEntries(event);
+	for(DetectorDataDgtz d: rawEntries){
+	   if(d.getDescriptor().getCrate()==6&&d.getDescriptor().getChannel()==0){
+	      if(d.getADCSize()>0){
+	      short[] pulse = d.getADCData(0).getPulseArray();
+	      if (eCounter < 302 && eCounter > 202){
+	      	      for(int i = 0; i < pulse.length; i++){
+                       sEventH[eCounter-203].fill(i, pulse[i]);
+		      }
+	      }
+	      for(int i = 0; i < pulse.length; i++){
+	      	     
+		     spectrum.fill(pulse[i]);
+		     darkSignal = darkSignal + pulse[i];
+		     darkSignalCounter++;
+		     ADCspectrum.fill(i, pulse[i]);
+	      	     signal = signal + pulse[i];
+		     signalCounter++;
+		    }
+	      }
+	   }
+	}
+	}
+
+        TCanvas c1 = new TCanvas("c1",800,400);
+c1.divide(2, 1);
+c1.cd(1);
+DataFitter.fit(pedF, spectrum, "E");
+pedestalFit = pedF.getParameter(1);
+
+c1.draw(spectrum);
+c1.draw(pedF, "same");
+c1.cd(0);
+c1.draw(ADCspectrum);
+
+        TCanvas c2 = new TCanvas("c2",800,800);
+	c2.divide(10, 10);
+  for (int t = 0; t < 100; t++){
+  c2.cd(t - 0);
+  c2.draw(sEventH.get(t));
+}
+
+
+float time = signalCounter*4e-9;
+float rangeSetting = 0.5;
+float UnitOfIn = 1/50.0;
+
+float darkRealSignal = darkSignal - pedestalFit*darkSignalCounter;
+float darkCharge = darkRealSignal*UnitOfIn*rangeSetting/4096*4e-9;
+float darkTime = darkSignalCounter*4e-9;
+float darkCurrent = darkCharge/darkTime;
+
+System.out.println("============Results=========
+
+
+");
+System.out.println("Dark charge " + darkCharge);
+
+System.out.println("Dark current " + darkCurrent);
